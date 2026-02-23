@@ -25,8 +25,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "https://civictechtide-frontend.vercel.app",
-        "https://civictechTide.vercel.app",
+        "https://civictechtide-frontend.onrender.com",
         settings.FRONTEND_URL,
     ],
     allow_credentials=True,
