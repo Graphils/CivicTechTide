@@ -5,13 +5,32 @@ import { StatusBadge, CategoryBadge } from '../components/ui/Badge'
 import { statusLabels, formatRelative } from '../utils/helpers'
 import type { Report, DashboardStats, ReportStatus } from '../types'
 import toast from 'react-hot-toast'
-import { BarChart2, Users, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
+import { BarChart2, Users, CheckCircle, AlertCircle, RefreshCw, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+
+const STATUS_ORDER: ReportStatus[] = ['reported', 'under_review', 'in_progress', 'resolved', 'rejected']
+
+const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string; bg: string; border: string }> = {
+  reported:     { label: 'Reported',     color: 'text-blue-600',   bg: 'bg-blue-50',   border: 'border-blue-200' },
+  under_review: { label: 'Under Review', color: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200' },
+  in_progress:  { label: 'In Progress',  color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
+  resolved:     { label: 'Resolved',     color: 'text-green-600',  bg: 'bg-green-50',  border: 'border-green-200' },
+  rejected:     { label: 'Rejected',     color: 'text-red-600',    bg: 'bg-red-50',    border: 'border-red-200' },
+}
 
 export default function AdminPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [reports, setReports] = useState<Report[]>([])
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState<number | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [clearingStatus, setClearingStatus] = useState<ReportStatus | null>(null)
+  const [collapsed, setCollapsed] = useState<Record<ReportStatus, boolean>>({
+    reported: false,
+    under_review: false,
+    in_progress: false,
+    resolved: true,
+    rejected: true,
+  })
 
   const loadData = async () => {
     setLoading(true)
@@ -35,7 +54,7 @@ export default function AdminPage() {
     setUpdatingId(id)
     try {
       await reportService.updateStatus(id, status)
-      toast.success('Status updated! Email sent to reporter.')
+      toast.success('Status updated!')
       loadData()
     } catch {
       toast.error('Failed to update status')
@@ -43,6 +62,44 @@ export default function AdminPage() {
       setUpdatingId(null)
     }
   }
+
+  const deleteReport = async (id: number) => {
+    if (!confirm('Delete this report? This cannot be undone.')) return
+    setDeletingId(id)
+    try {
+      await api.delete(`/reports/${id}`)
+      toast.success('Report deleted')
+      loadData()
+    } catch {
+      toast.error('Failed to delete report')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const clearByStatus = async (status: ReportStatus) => {
+    const group = groupedReports[status] || []
+    if (!confirm(`Clear all ${group.length} ${STATUS_CONFIG[status].label} reports? This cannot be undone.`)) return
+    setClearingStatus(status)
+    try {
+      await Promise.all(group.map(r => api.delete(`/reports/${r.id}`)))
+      toast.success(`Cleared all ${STATUS_CONFIG[status].label} reports!`)
+      loadData()
+    } catch {
+      toast.error('Failed to clear reports')
+    } finally {
+      setClearingStatus(null)
+    }
+  }
+
+  const toggleCollapse = (status: ReportStatus) => {
+    setCollapsed(prev => ({ ...prev, [status]: !prev[status] }))
+  }
+
+  const groupedReports = STATUS_ORDER.reduce((acc, status) => {
+    acc[status] = reports.filter(r => r.status === status)
+    return acc
+  }, {} as Record<ReportStatus, Report[]>)
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
@@ -87,94 +144,136 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Reports — Mobile cards view */}
-      <div className="block lg:hidden space-y-4 mb-6">
-        <h2 className="section-title">All Reports</h2>
-        {reports.map((report) => (
-          <div key={report.id} className="card">
-            <div className="flex flex-wrap gap-2 mb-2">
-              <StatusBadge status={report.status} />
-              <CategoryBadge category={report.category} />
-            </div>
-            <h3 className="font-semibold text-ocean text-sm mb-0.5">{report.title}</h3>
-            <p className="text-xs text-ocean/40 mb-3">{report.author_name} · {formatRelative(report.created_at)}</p>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-ocean/50 font-medium shrink-0">Update:</label>
-              <select
-                value={report.status}
-                onChange={(e) => updateStatus(report.id, e.target.value as ReportStatus)}
-                disabled={updatingId === report.id}
-                className="input py-1.5 text-xs flex-1"
-              >
-                {(Object.entries(statusLabels) as [ReportStatus, string][]).map(([val, label]) => (
-                  <option key={val} value={val}>{label}</option>
-                ))}
-              </select>
-              {updatingId === report.id && (
-                <RefreshCw size={14} className="animate-spin text-wave shrink-0" />
-              )}
-            </div>
-          </div>
-        ))}
-        {reports.length === 0 && (
-          <div className="card text-center py-10 text-ocean/30 text-sm">No reports yet.</div>
-        )}
-      </div>
+      {/* Grouped Reports by Status */}
+      <div className="space-y-4">
+        {STATUS_ORDER.map((status) => {
+          const group = groupedReports[status] || []
+          const config = STATUS_CONFIG[status]
+          const isCollapsed = collapsed[status]
 
-      {/* Reports — Desktop table view */}
-      <div className="hidden lg:block card overflow-hidden p-0">
-        <div className="px-6 py-4 border-b border-blue-50 flex items-center justify-between">
-          <h2 className="section-title">All Reports</h2>
-          <span className="text-sm text-ocean/40">{reports.length} total</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-foam text-ocean/60 text-xs font-semibold" style={{ fontFamily: 'Syne, sans-serif' }}>
-                <th className="px-6 py-3 text-left">#</th>
-                <th className="px-6 py-3 text-left">Title</th>
-                <th className="px-6 py-3 text-left">Category</th>
-                <th className="px-6 py-3 text-left">Status</th>
-                <th className="px-6 py-3 text-left">Reported</th>
-                <th className="px-6 py-3 text-left">Update Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.map((report, i) => (
-                <tr key={report.id} className={`border-b border-blue-50 hover:bg-foam/50 transition-colors ${i % 2 === 0 ? '' : 'bg-blue-50/20'}`}>
-                  <td className="px-6 py-4 text-ocean/40 font-mono text-xs">{report.id}</td>
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-ocean line-clamp-1">{report.title}</div>
-                    <div className="text-xs text-ocean/40 mt-0.5">{report.author_name}</div>
-                  </td>
-                  <td className="px-6 py-4"><CategoryBadge category={report.category} /></td>
-                  <td className="px-6 py-4"><StatusBadge status={report.status} /></td>
-                  <td className="px-6 py-4 text-ocean/50 text-xs">{formatRelative(report.created_at)}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={report.status}
-                        onChange={(e) => updateStatus(report.id, e.target.value as ReportStatus)}
-                        disabled={updatingId === report.id}
-                        className="input py-1.5 text-xs w-36"
-                      >
-                        {(Object.entries(statusLabels) as [ReportStatus, string][]).map(([val, label]) => (
-                          <option key={val} value={val}>{label}</option>
-                        ))}
-                      </select>
-                      {updatingId === report.id && (
-                        <RefreshCw size={14} className="animate-spin text-wave" />
-                      )}
+          return (
+            <div key={status} className={`border-2 ${config.border} rounded-2xl overflow-hidden`}>
+
+              {/* Group Header */}
+              <div className={`${config.bg} px-5 py-4 flex items-center gap-3`}>
+                <button
+                  onClick={() => toggleCollapse(status)}
+                  className="flex items-center gap-3 flex-1 text-left"
+                >
+                  <span className={`font-bold text-base ${config.color}`} style={{ fontFamily: 'Syne, sans-serif' }}>
+                    {config.label}
+                  </span>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full bg-white ${config.color}`}>
+                    {group.length}
+                  </span>
+                  {isCollapsed
+                    ? <ChevronDown size={16} className={`${config.color} ml-1`} />
+                    : <ChevronUp size={16} className={`${config.color} ml-1`} />
+                  }
+                </button>
+
+                {/* Clear All button */}
+                {group.length > 0 && (
+                  <button
+                    onClick={() => clearByStatus(status)}
+                    disabled={clearingStatus === status}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors shrink-0"
+                    style={{ fontFamily: 'Syne, sans-serif' }}
+                  >
+                    {clearingStatus === status
+                      ? <RefreshCw size={12} className="animate-spin" />
+                      : <Trash2 size={12} />
+                    }
+                    Clear All
+                  </button>
+                )}
+              </div>
+
+              {/* Reports list */}
+              {!isCollapsed && (
+                <div className="divide-y divide-blue-50 bg-white">
+                  {group.length === 0 ? (
+                    <div className="px-5 py-8 text-center text-ocean/30 text-sm">
+                      No {config.label.toLowerCase()} reports
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {reports.length === 0 && (
-            <div className="text-center py-12 text-ocean/30 text-sm">No reports yet.</div>
-          )}
-        </div>
+                  ) : (
+                    group.map((report) => (
+                      <div key={report.id} className="px-5 py-4 hover:bg-foam/30 transition-colors">
+
+                        {/* Mobile */}
+                        <div className="flex flex-col gap-3 sm:hidden">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <p className="font-semibold text-ocean text-sm leading-tight">{report.title}</p>
+                              <p className="text-xs text-ocean/40 mt-0.5">{report.author_name} · {formatRelative(report.created_at)}</p>
+                            </div>
+                            <CategoryBadge category={report.category} />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={report.status}
+                              onChange={(e) => updateStatus(report.id, e.target.value as ReportStatus)}
+                              disabled={updatingId === report.id}
+                              className="input py-1.5 text-xs flex-1"
+                            >
+                              {STATUS_ORDER.map(s => (
+                                <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => deleteReport(report.id)}
+                              disabled={deletingId === report.id}
+                              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                            >
+                              {deletingId === report.id
+                                ? <RefreshCw size={14} className="animate-spin" />
+                                : <Trash2 size={14} />
+                              }
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Desktop */}
+                        <div className="hidden sm:flex items-center gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-ocean text-sm truncate">{report.title}</p>
+                            <p className="text-xs text-ocean/40 mt-0.5">{report.author_name} · {formatRelative(report.created_at)}</p>
+                          </div>
+                          <CategoryBadge category={report.category} />
+                          <select
+                            value={report.status}
+                            onChange={(e) => updateStatus(report.id, e.target.value as ReportStatus)}
+                            disabled={updatingId === report.id}
+                            className="input py-1.5 text-xs w-36 shrink-0"
+                          >
+                            {STATUS_ORDER.map(s => (
+                              <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+                            ))}
+                          </select>
+                          {updatingId === report.id && (
+                            <RefreshCw size={14} className="animate-spin text-wave shrink-0" />
+                          )}
+                          <button
+                            onClick={() => deleteReport(report.id)}
+                            disabled={deletingId === report.id}
+                            className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                          >
+                            {deletingId === report.id
+                              ? <RefreshCw size={14} className="animate-spin" />
+                              : <Trash2 size={14} />
+                            }
+                          </button>
+                        </div>
+
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+            </div>
+          )
+        })}
       </div>
 
     </div>
