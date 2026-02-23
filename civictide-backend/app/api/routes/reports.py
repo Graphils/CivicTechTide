@@ -7,6 +7,7 @@ import cloudinary.uploader
 from app.db.database import get_db
 from app.models.report import Report, ReportCategory, ReportStatus
 from app.models.user import User
+from app.models.engagement import Vote, Comment
 from app.schemas.report import ReportCreate, ReportUpdate, ReportOut, ReportListOut
 from app.core.security import get_current_user, get_current_admin
 from app.core.config import settings
@@ -179,5 +180,10 @@ def delete_report(
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+
+    # Delete related votes and comments first to avoid foreign key errors
+    db.query(Vote).filter(Vote.report_id == report_id).delete()
+    db.query(Comment).filter(Comment.report_id == report_id).delete()
+
     db.delete(report)
     db.commit()
