@@ -1,45 +1,30 @@
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import resend
 from app.core.config import settings
+
+resend.api_key = settings.RESEND_API_KEY
 
 
 def send_email(to: str, subject: str, html_body: str):
-    """Send an HTML email via Gmail SMTP."""
+    """Send an HTML email via Resend."""
     try:
         print(f"📧 Attempting to send email to {to}...")
-        print(f"SMTP_HOST: {settings.SMTP_HOST}")
-        print(f"SMTP_PORT: {settings.SMTP_PORT}")
-        print(f"SMTP_USER: {settings.SMTP_USER}")
-        print(f"SMTP_PASSWORD length: {len(settings.SMTP_PASSWORD) if settings.SMTP_PASSWORD else 'NOT SET'}")
+        print(f"RESEND_API_KEY length: {len(settings.RESEND_API_KEY) if settings.RESEND_API_KEY else 'NOT SET'}")
 
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"CivicTide <{settings.SMTP_USER}>"
-        msg["To"] = to
+        params = {
+            "from": "CivicTide <onboarding@resend.dev>",
+            "to": [to],
+            "subject": subject,
+            "html": html_body,
+        }
 
-        msg.attach(MIMEText(html_body, "html"))
+        response = resend.Emails.send(params)
+        print(f"✅ Email sent successfully! ID: {response}")
 
-        with smtplib.SMTP(settings.SMTP_HOST, int(settings.SMTP_PORT)) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-            server.sendmail(settings.SMTP_USER, to, msg.as_string())
-
-        print(f"✅ Email sent successfully to {to}")
-
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"❌ SMTP Authentication failed — check your App Password: {e}")
-    except smtplib.SMTPException as e:
-        print(f"❌ SMTP error: {e}")
     except Exception as e:
         print(f"❌ Email sending failed: {type(e).__name__}: {e}")
 
 
 def send_status_update_email(to: str, name: str, report_title: str, new_status: str, resolution_notes: str = None):
-    """Send a status update notification to the report author."""
-
     status_colors = {
         "reported":     "#1a8fe8",
         "under_review": "#f39c12",
@@ -47,7 +32,6 @@ def send_status_update_email(to: str, name: str, report_title: str, new_status: 
         "resolved":     "#27ae60",
         "rejected":     "#e74c3c",
     }
-
     status_labels = {
         "reported":     "Reported",
         "under_review": "Under Review",
@@ -66,61 +50,41 @@ def send_status_update_email(to: str, name: str, report_title: str, new_status: 
         </div>
     """ if resolution_notes else ""
 
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <body style="margin:0;padding:0;background:#f7fafd;font-family:'Helvetica Neue',Arial,sans-serif;">
         <div style="max-width:600px;margin:40px auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(10,58,102,0.08);">
-
             <div style="background:linear-gradient(135deg,#0a3a66,#1a8fe8);padding:32px;text-align:center;">
                 <h1 style="margin:0;color:white;font-size:28px;font-weight:800;">CivicTide 🌊</h1>
                 <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">Your Voice. Your Community. Your Change.</p>
             </div>
-
             <div style="padding:32px;">
                 <p style="font-size:16px;color:#0a3a66;margin:0 0 16px;">Hi <strong>{name}</strong>,</p>
-                <p style="font-size:15px;color:#555;margin:0 0 24px;">
-                    Your report has been updated. Here's the latest status:
-                </p>
-
+                <p style="font-size:15px;color:#555;margin:0 0 24px;">Your report has been updated. Here's the latest status:</p>
                 <div style="padding:16px;background:#f7fafd;border-radius:8px;margin-bottom:20px;">
                     <p style="margin:0;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:1px;">Report</p>
                     <p style="margin:6px 0 0;font-size:16px;font-weight:700;color:#0a3a66;">{report_title}</p>
                 </div>
-
                 <div style="text-align:center;margin:24px 0;">
-                    <span style="display:inline-block;padding:10px 28px;background:{color};color:white;border-radius:50px;font-size:16px;font-weight:700;">
-                        {label}
-                    </span>
+                    <span style="display:inline-block;padding:10px 28px;background:{color};color:white;border-radius:50px;font-size:16px;font-weight:700;">{label}</span>
                 </div>
-
                 {notes_section}
-
                 <div style="text-align:center;margin-top:28px;">
-                    <a href="{settings.FRONTEND_URL}/reports"
-                       style="display:inline-block;padding:12px 32px;background:#1a8fe8;color:white;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px;">
-                        View Your Report →
-                    </a>
+                    <a href="{settings.FRONTEND_URL}/reports" style="display:inline-block;padding:12px 32px;background:#1a8fe8;color:white;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px;">View Your Report →</a>
                 </div>
             </div>
-
             <div style="padding:20px 32px;background:#f7fafd;text-align:center;border-top:1px solid #e8f4fd;">
-                <p style="margin:0;font-size:12px;color:#aaa;">
-                    CivicTide by TechTide Stratum · Ghana Communication Technology University
-                </p>
+                <p style="margin:0;font-size:12px;color:#aaa;">CivicTide by TechTide Stratum · Ghana Communication Technology University</p>
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
 
     send_email(to, f"Your Report Status Updated — {label}", html)
 
 
 def send_new_report_email(admin_email: str, report_title: str, category: str, reporter_name: str):
-    """Notify admin when a new report is submitted."""
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <body style="margin:0;padding:0;background:#f7fafd;font-family:'Helvetica Neue',Arial,sans-serif;">
         <div style="max-width:600px;margin:40px auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(10,58,102,0.08);">
@@ -137,14 +101,10 @@ def send_new_report_email(admin_email: str, report_title: str, category: str, re
                     <p style="margin:4px 0 0;font-size:13px;color:#888;">Reported by: <strong>{reporter_name}</strong></p>
                 </div>
                 <div style="text-align:center;margin-top:24px;">
-                    <a href="{settings.FRONTEND_URL}/admin"
-                       style="display:inline-block;padding:12px 32px;background:#1a8fe8;color:white;text-decoration:none;border-radius:10px;font-weight:700;">
-                        Review on Admin Dashboard →
-                    </a>
+                    <a href="{settings.FRONTEND_URL}/admin" style="display:inline-block;padding:12px 32px;background:#1a8fe8;color:white;text-decoration:none;border-radius:10px;font-weight:700;">Review on Admin Dashboard →</a>
                 </div>
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     send_email(admin_email, f"New Report: {report_title}", html)
