@@ -1,30 +1,38 @@
-import resend
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
-
-resend.api_key = settings.RESEND_API_KEY
 
 
 def send_email(to: str, subject: str, html_body: str):
-    """Send an HTML email via Resend."""
+    """Send an HTML email via Gmail SMTP using SSL on port 465."""
     try:
-        print(f"📧 Attempting to send email to {to}...")
-        print(f"RESEND_API_KEY length: {len(settings.RESEND_API_KEY) if settings.RESEND_API_KEY else 'NOT SET'}")
+        print(f"📧 Sending email to {to}...")
 
-        params = {
-            "from": "CivicTide <onboarding@resend.dev>",
-            "to": [to],
-            "subject": subject,
-            "html": html_body,
-        }
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"CivicTide <{settings.SMTP_USER}>"
+        msg["To"] = to
+        msg.attach(MIMEText(html_body, "html"))
 
-        response = resend.Emails.send(params)
-        print(f"✅ Email sent successfully! ID: {response}")
+        # Port 465 with SSL works on Render free tier unlike 587
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            server.sendmail(settings.SMTP_USER, to, msg.as_string())
 
+        print(f"✅ Email sent successfully to {to}")
+
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"❌ Authentication failed — check Gmail App Password: {e}")
+    except smtplib.SMTPException as e:
+        print(f"❌ SMTP error: {e}")
     except Exception as e:
-        print(f"❌ Email sending failed: {type(e).__name__}: {e}")
+        print(f"❌ Email failed: {type(e).__name__}: {e}")
 
 
 def send_status_update_email(to: str, name: str, report_title: str, new_status: str, resolution_notes: str = None):
+    """Send a status update notification to the report author."""
+
     status_colors = {
         "reported":     "#1a8fe8",
         "under_review": "#f39c12",
@@ -32,6 +40,7 @@ def send_status_update_email(to: str, name: str, report_title: str, new_status: 
         "resolved":     "#27ae60",
         "rejected":     "#e74c3c",
     }
+
     status_labels = {
         "reported":     "Reported",
         "under_review": "Under Review",
@@ -84,6 +93,7 @@ def send_status_update_email(to: str, name: str, report_title: str, new_status: 
 
 
 def send_new_report_email(admin_email: str, report_title: str, category: str, reporter_name: str):
+    """Notify admin when a new report is submitted."""
     html = f"""<!DOCTYPE html>
     <html>
     <body style="margin:0;padding:0;background:#f7fafd;font-family:'Helvetica Neue',Arial,sans-serif;">
@@ -107,4 +117,5 @@ def send_new_report_email(admin_email: str, report_title: str, category: str, re
         </div>
     </body>
     </html>"""
+
     send_email(admin_email, f"New Report: {report_title}", html)
