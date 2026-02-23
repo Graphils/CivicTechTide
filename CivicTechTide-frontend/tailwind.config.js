@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  content: [
+    './index.html',
+    './src/**/*.{js,ts,jsx,tsx}',
+  ],
   theme: {
     extend: {
       colors: {
@@ -29,14 +32,6 @@ export default {
         display: ['"Syne"', 'sans-serif'],
         body:    ['"DM Sans"', 'sans-serif'],
         mono:    ['"JetBrains Mono"', 'monospace'],
-      },
-      borderRadius: {
-        '2xl': '1rem',
-        '3xl': '1.5rem',
-      },
-      boxShadow: {
-        card: '0 2px 24px 0 rgba(10,58,102,0.08)',
-        glow: '0 0 32px 0 rgba(26,143,232,0.18)',
       },
     },
   },
