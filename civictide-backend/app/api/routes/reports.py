@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import cloudinary
 import cloudinary.uploader
-import threading
 
 from app.db.database import get_db
 from app.models.report import Report, ReportCategory, ReportStatus
@@ -22,11 +21,12 @@ cloudinary.config(
 )
 
 
-def send_email_async(fn, *args):
-    """Send emails in background thread so API doesn't slow down."""
-    thread = threading.Thread(target=fn, args=args)
-    thread.daemon = True
-    thread.start()
+def send_email_safe(fn, *args):
+    """Send email directly — background threads get killed on Render free tier."""
+    try:
+        fn(*args)
+    except Exception as e:
+        print(f"❌ Email error: {e}")
 
 
 # ── Public routes ──────────────────────────────────────
@@ -117,10 +117,10 @@ async def create_report(
     db.commit()
     db.refresh(report)
 
-    # Notify all admins by email in background
+    # Notify all admins by email
     admins = db.query(User).filter(User.is_admin == True).all()
     for admin in admins:
-        send_email_async(
+        send_email_safe(
             send_new_report_email,
             admin.email,
             title,
@@ -153,10 +153,10 @@ def update_report_status(
     db.commit()
     db.refresh(report)
 
-    # Email the report author
+    # Email the report author directly
     author = db.query(User).filter(User.id == report.user_id).first()
     if author:
-        send_email_async(
+        send_email_safe(
             send_status_update_email,
             author.email,
             author.full_name,
